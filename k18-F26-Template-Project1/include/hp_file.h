@@ -19,7 +19,9 @@ typedef enum HP_ErrorCode {
  * διαχείριση του iterator της HP_GetNextRecordWithID.
  */
 typedef struct HP_info {
-  /* TODO: συμπληρώστε τα πεδία που χρειάζεστε */
+    char* filetype;
+    int record_count;
+    BF_Block* Last_block;
 } HP_info;
 
 /* Δημιουργεί και αρχικοποιεί ένα άδειο αρχείο σωρού με όνομα fileName. Αν το

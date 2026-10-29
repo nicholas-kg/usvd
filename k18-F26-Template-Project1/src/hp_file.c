@@ -18,16 +18,49 @@
     }                         \
   }
 
+//MAKE SURE TO ALWAYS CHECK WHETHER THIS IS < MAX_OPEN_FILES
+static int openCount = 0;
+
 HP_ErrorCode HP_CreateFile(const char *fileName) {
-  /* TODO: δημιουργήστε το αρχείο, δεσμεύστε το πρώτο μπλοκ και αποθηκεύστε
-     εκεί ένα στιγμιότυπο της HP_info */
-  return HP_ERROR;
+    int fileDesc;
+    BF_Block*  block;
+    HP_info* info= {0};
+	/*We don't add this to the openfiles array since
+	it will be closed in the end of this function*/
+    CALL_BF(BF_CreateFile(fileName));
+    CALL_BF(BF_OpenFile(fileName, &fileDesc));
+    BF_Block_init(&block);
+    CALL_BF(BF_AllocateBlock(fileDesc, block));
+
+    char* data = BF_Block_GetData(block);
+    info->filetype = "HP_file";
+    info->record_count = 0;
+    info->Last_block = block;
+    memcpy(data, info, sizeof(HP_info));
+  
+    BF_Block_SetDirty(block);
+    CALL_BF(BF_UnpinBlock(Block));
+    BF_BlockDestroy(block);
+    CALL_BF(BF_CloseFile(fileDesc));
+    return HP_OK;
 }
 
 HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
   /* TODO: ανοίξτε το αρχείο, διαβάστε τα μεταδεδομένα από το πρώτο μπλοκ και
-     ελέγξτε ότι πρόκειται όντως για αρχείο σωρού */
-  return HP_ERROR;
+    ελέγξτε ότι πρόκειται όντως για αρχείο σωρού */
+	if(openCount >= BF_MAX_OPEN_FILES) return HP_ERROR;
+	HP_info* metadata;
+	BF_Block* first;
+	CALL_BF(BF_OpenFile(fileName, fileDesc));
+	CALL_BF(BF_GetBlock(fileDesc, 0,first));
+	char* mdata = CALL_BF(BF_Block_GetData(first));
+	memcpy(metadata, mdata, sizeof(HP_info));
+	if (metadata->filetype != "HP_file"){
+		CALL_BF(BF_CloseFile(fileDesc));
+		return HP_ERROR;
+	}
+	openCount++;
+  	return HP_OK;
 }
 
 HP_ErrorCode HP_CloseFile(int fileDesc) {
