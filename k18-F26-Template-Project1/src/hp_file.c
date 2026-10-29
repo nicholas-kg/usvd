@@ -50,17 +50,25 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
     ελέγξτε ότι πρόκειται όντως για αρχείο σωρού */
 	if(openCount >= BF_MAX_OPEN_FILES) return HP_ERROR;
 	HP_info* metadata;
-	BF_Block* first;
+	BF_Block* first = NULL;
+  BF_Block_init(&first);
+
 	CALL_BF(BF_OpenFile(fileName, fileDesc));
-	CALL_BF(BF_GetBlock(fileDesc, 0,first));
-	char* mdata = CALL_BF(BF_Block_GetData(first));
+	if(BF_GetBlock(fileDesc, 0,first)!=BF_OK){
+    BF_BlockDestroy(&first);
+    BF_CloseFile(fileDesc);
+    return HP_ERROR;
+  }
+	
+  char* mdata = BF_Block_GetData(first);
 	memcpy(metadata, mdata, sizeof(HP_info));
-	if (metadata->filetype != "HP_file"){
-		CALL_BF(BF_CloseFile(fileDesc));
+	
+  if (strcmp(metadata->filetype, "HP_file") != 0){
+		BF_CloseFile(fileDesc);
 		return HP_ERROR;
 	}
 	openCount++;
-  	return HP_OK;
+  return HP_OK;
 }
 
 HP_ErrorCode HP_CloseFile(int fileDesc) {
