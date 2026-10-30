@@ -51,19 +51,19 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
 	if(openCount >= BF_MAX_OPEN_FILES) return HP_ERROR;
 	HP_info* metadata;
 	BF_Block* first = NULL;
-  BF_Block_init(&first);
+  	BF_Block_init(&first);
 
 	CALL_BF(BF_OpenFile(fileName, fileDesc));
 	if(BF_GetBlock(fileDesc, 0,first)!=BF_OK){
     BF_BlockDestroy(&first);
     BF_CloseFile(fileDesc);
     return HP_ERROR;
-  }
+  	}
 	
-  char* mdata = BF_Block_GetData(first);
+  	char* mdata = BF_Block_GetData(first);
 	memcpy(metadata, mdata, sizeof(HP_info));
 	
-  if (strcmp(metadata->filetype, "HP_file") != 0){
+  	if (strcmp(metadata->filetype, "HP_file") != 0){
 		BF_CloseFile(fileDesc);
 		return HP_ERROR;
 	}
@@ -76,6 +76,9 @@ HP_ErrorCode HP_CloseFile(int fileDesc) {
   return HP_ERROR;
 }
 
+//Idea: Reserve 4 bytes of every block to keep a counter
+//of records in this block. Bytes at the end of the file used
+//--> 4 from BF_BLOCK_SIZE - RECORDS_PER_BLOCK * sizeof(Record)
 HP_ErrorCode HP_InsertEntry(int fileDesc, Record record) {
   /* TODO: βρείτε ή δεσμεύστε το κατάλληλο μπλοκ και αντιγράψτε εκεί την
      εγγραφή με την blockSetRecord. Μην ξεχάσετε να ενημερώσετε τα
@@ -91,9 +94,21 @@ HP_ErrorCode HP_PrintAllEntries(int fileDesc, char *fieldName, void *value) {
 
 HP_ErrorCode HP_GetEntry(int fileDesc, int blockid, int position,
                          Record *record) {
-  /* TODO: φέρτε το μπλοκ blockid και διαβάστε την εγγραφή της θέσης position
-     με την blockGetRecord */
-  return HP_ERROR;
+  	/* TODO: φέρτε το μπλοκ blockid και διαβάστε την εγγραφή της θέσης position
+    με την blockGetRecord */
+	BF_Block* target;
+	BF_Block_init(&target);
+	CALL_BF(BF_GetBlock(fileDesc, blockid, target));
+	if(blockGetRecord(target, position, record) != 0){
+		CALL_BF(BF_UnpinBlock(target));
+		BF_BlockDestroy(target);
+		return HP_ERROR;	
+	}
+	//GetBlock pins the block now we need to unpin it and delete the local
+	//instance of the block
+	CALL_BF(BF_UnpinBlock(target));
+	BF_BlockDestroy(target);
+  	return HP_OK;
 }
 
 HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
