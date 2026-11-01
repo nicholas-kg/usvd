@@ -35,7 +35,10 @@ HP_ErrorCode HP_CreateFile(const char *fileName) {
     char* data = BF_Block_GetData(block);
     info->filetype = "HP_file";
     info->record_count = 0;
+    info->block_count = 1;
     info->Last_block = block;
+    info->iterator_pos = 1;//Block 0 is for metadata only.
+    info->iterator_slot = 0;
     memcpy(data, info, sizeof(HP_info));
   
     BF_Block_SetDirty(block);
@@ -112,7 +115,45 @@ HP_ErrorCode HP_GetEntry(int fileDesc, int blockid, int position,
 }
 
 HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
-  /* TODO: υλοποιήστε τον iterator. Η κατάσταση του (πού σταμάτησε η
+    /* TODO: υλοποιήστε τον iterator. Η κατάσταση του (πού σταμάτησε η
      προηγούμενη κλήση) πρέπει να επιβιώνει ανάμεσα στις κλήσεις. */
-  return HP_ERROR;
+    HP_info* metadata;
+    BF_Block* first;
+    int *target = (int*)value;
+    BF_Block_init(&first);
+    BF_GetBlock(fileDesc, 0, first);
+    char* data = BF_Block_GetData(first);
+    memcpy(metadata, data, sizeof(HP_info));
+    if(strcmp(metadata->filetype, "HP_file") != 0) return HP_ERROR;
+    if(metadata->record_count == 0) return HP_EOF;
+    while(metadata->iterator_pos < metadata->block_count-1){
+        BF_Block* block;
+        BF_Block_init(block);
+        CALL_BF(BF_GetBlock(fileDesc,metadata->iterator_pos,block));
+        while(info->iterator_slot < RECORDS_PER_BLOCK){
+            Record* cur;
+            blockGetRecord(block,metadata->iterator_slot,cur);
+            metadata->iterator_slot++;
+            if(cur->id == target){
+                record = cur;
+                BF_UnpinBlock(block);
+                memcpy(data,metadata,sizeof(HP_info));
+                BF_UnpinBlock(first);
+                BF_BlockDestroy(block);
+                BF_BlockDestroy(first);
+                return HP_OK;
+            }
+        }
+        metadata->iterator_pos++;
+        metadata->iterator_slot=0;
+    }
+    //we reached EOF so we reset the iterator.
+    metadata->iterator_pos = 1;
+    metadata->iterator_slot = 0;
+    BF_UnpinBlock(block);
+    memcpy(data,metadata,sizeof(HP_info));
+    BF_UnpinBlock(first);
+    BF_BlockDestroy(block);
+    BF_BlockDestroy(first);
+    return HP_EOF;
 }
