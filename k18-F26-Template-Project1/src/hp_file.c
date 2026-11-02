@@ -18,6 +18,13 @@
     }                         \
   }
 
+/*Assumptions Made
+The first block of each file (Block 0) stores only metadata (HP_info)
+Each block that stores records has a counter of said records. Its' adress
+is at block_start+RECORDS_PER_BLOCK * sizeof(Record) since the block has 56 free bytes at the end.
+This choice is justified by looking at the blockGetRecord (didn't want to change it).
+Remember to update metadata (check hp_info) and openCount and do the respective sanity checks.*/
+
 //MAKE SURE TO ALWAYS CHECK WHETHER THIS IS < MAX_OPEN_FILES
 static int openCount = 0;
 
@@ -115,26 +122,29 @@ HP_ErrorCode HP_GetEntry(int fileDesc, int blockid, int position,
 }
 
 HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
-    /* TODO: υλοποιήστε τον iterator. Η κατάσταση του (πού σταμάτησε η
-     προηγούμενη κλήση) πρέπει να επιβιώνει ανάμεσα στις κλήσεις. */
-    HP_info* metadata;
+    HP_info* metadata = {0};
     BF_Block* first;
     int *target = (int*)value;
     BF_Block_init(&first);
     BF_GetBlock(fileDesc, 0, first);
     char* data = BF_Block_GetData(first);
     memcpy(metadata, data, sizeof(HP_info));
+    //Sanity checks
     if(strcmp(metadata->filetype, "HP_file") != 0) return HP_ERROR;
     if(metadata->record_count == 0) return HP_EOF;
-    while(metadata->iterator_pos < metadata->block_count-1){
+    while(metadata->iterator_pos < metadata->block_count){
         BF_Block* block;
         BF_Block_init(block);
+        //read number of records to not read null data (or leftover values in mem)
+        int recordsInBlock = 0;
         CALL_BF(BF_GetBlock(fileDesc,metadata->iterator_pos,block));
-        while(info->iterator_slot < RECORDS_PER_BLOCK){
+        memcpy(&recordsInBlock, block+sizeof(Record)*RECORDS_PER_BLOCK, sizeof(int));
+        while(info->iterator_slot < recordsInBlock){
             Record* cur;
             blockGetRecord(block,metadata->iterator_slot,cur);
             metadata->iterator_slot++;
             if(cur->id == target){
+              //set result and cleanup
                 record = cur;
                 BF_UnpinBlock(block);
                 memcpy(data,metadata,sizeof(HP_info));
@@ -150,9 +160,11 @@ HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
     //we reached EOF so we reset the iterator.
     metadata->iterator_pos = 1;
     metadata->iterator_slot = 0;
-    BF_UnpinBlock(block);
+    //Cleanup and metadata update
+    CALL_BF(BF_UnpinBlock(block));
     memcpy(data,metadata,sizeof(HP_info));
-    BF_UnpinBlock(first);
+    BF_Block_SetDirty(first);
+    CALL_BF(BF_UnpinBlock(first));
     BF_BlockDestroy(block);
     BF_BlockDestroy(first);
     return HP_EOF;
