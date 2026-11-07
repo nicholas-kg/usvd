@@ -27,6 +27,8 @@ Remember to update metadata (check hp_info) and openCount and do the respective 
 
 //MAKE SURE TO ALWAYS CHECK WHETHER THIS IS < MAX_OPEN_FILES
 static int openCount = 0;
+//array that stores block 0 of every open file
+static BF_Block *openFiles[BF_MAX_OPEN_FILES] = {NULL};
 
 HP_ErrorCode HP_CreateFile(const char *fileName) {
     int fileDesc;
@@ -71,29 +73,101 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
   	}
 	
   	char* mdata = BF_Block_GetData(first);
-	memcpy(metadata, mdata, sizeof(HP_info));
+	  memcpy(metadata, mdata, sizeof(HP_info));
 	
   	if (strcmp(metadata->filetype, "HP_file") != 0){
 		BF_CloseFile(fileDesc);
 		return HP_ERROR;
 	}
+  openFiles[*fileDesc] = first;
 	openCount++;
   return HP_OK;
 }
 
 HP_ErrorCode HP_CloseFile(int fileDesc) {
   /* TODO: γράψτε στον δίσκο ό,τι εκκρεμεί και κλείστε το αρχείο */
-  return HP_ERROR;
+  if (openCount >= BF_MAX_OPEN_FILES){
+    return HP_ERROR;
+  }
+
+  BF_Block *block = openFiles[fileDesc];
+  if(block == NULL){
+    return HP_ERROR;
+  }
+
+  BF_Block_SetDirty(block);
+  CALL_BF(BF_UnpinBlock(block));
+  BF_Block_Destroy(&block);
+  openFiles[fileDesc] = NULL;
+  CALL_BF(BF_CloseFile(fileDesc));
+
+  openCount--;
+  return HP_OK;
 }
 
 //Idea: Reserve 4 bytes of every block to keep a counter
 //of records in this block. Bytes at the end of the file used
 //--> 4 from BF_BLOCK_SIZE - RECORDS_PER_BLOCK * sizeof(Record)
 HP_ErrorCode HP_InsertEntry(int fileDesc, Record record) {
-  /* TODO: βρείτε ή δεσμεύστε το κατάλληλο μπλοκ και αντιγράψτε εκεί την
-     εγγραφή με την blockSetRecord. Μην ξεχάσετε να ενημερώσετε τα
-     μεταδεδομένα του αρχείου. */
-  return HP_ERROR;
+  if (openCount >= BF_MAX_OPEN_FILES) return HP_ERROR;
+  if(openFiles[fileDesc] == NULL) return HP_ERROR;
+
+  char* mdata = BF_Block_GetData(openFiles[fileDesc]);
+  HP_info *info = (HP_info *)mdata;
+
+  BF_Block *target_block = NULL;
+  BF_Block_Init(&target_block);
+
+  int blocks_num = 0;
+  CALL_BF(BF_GetBlockCounter(fileDesc,&blocks_num));
+
+
+  int records_in_block = 0;
+  int is_new_block = 0;
+
+  if(blocks_num == 1){
+    CALL_BF(BF_AllocateBlock(fileDesc, target_block));
+    records_in_block = 0;
+    is_new_block = 1;
+  } else {
+    int last_block = blocks_num -1;
+    CALL_BF(BF_GetBlock(fileDesc,last_block,target_block));
+
+    char* data = BF_Block_GetData(target_block);
+    int* counter = (int*)(data+sizeof(Record)*RECORDS_PER_BLOCK);
+    records_in_block = *counter;
+
+    if(records_in_block>=RECORDS_PER_BLOCK){
+      CALL_BF(BF_UnpinBlock(target_block));
+      CALL_BF(BF_AllocateBlock(fileDesc,target_block));
+      records_in_block = 0;
+      is_new_block = 1;
+    }
+  }
+
+  if(blockSetRecord(target_block,records_in_block,record) != 0){
+    CALL_BF(BF_UnpinBlock(target_block));
+    BF_Block_Destroy(&target_block);
+    return HP_ERROR;
+  }
+
+  records_in_block++;
+  char* data = BF_Block_GetData(target_block);
+  int* counter = (int*)(data+sizeof(Record)*RECORDS_PER_BLOCK);
+  *counter = records_in_block;
+
+  BF_Block_SetDirty(target_block);
+  CALL_BF(BF_UnpinBlock(target_block));
+  BF_Block_Destroy(&target_block);
+
+  info->record_count++;
+  if(is_new_block){
+    info->block_count++;
+  }
+
+  BF_Block_SetDirty(openFiles[fileDesc]);
+  return HP_OK;
+
 }
 
 HP_ErrorCode HP_PrintAllEntries(int fileDesc, char *fieldName, void *value) {
