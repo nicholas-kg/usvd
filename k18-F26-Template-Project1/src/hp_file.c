@@ -61,7 +61,7 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
   /* TODO: ανοίξτε το αρχείο, διαβάστε τα μεταδεδομένα από το πρώτο μπλοκ και
     ελέγξτε ότι πρόκειται όντως για αρχείο σωρού */
 	if(openCount >= BF_MAX_OPEN_FILES) return HP_ERROR;
-	HP_info* metadata;
+	HP_info* metadata = malloc(sizeof(HP_info));
 	BF_Block* first = NULL;
   	BF_Block_Init(&first);
 
@@ -71,17 +71,17 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
     BF_CloseFile(*fileDesc);
     return HP_ERROR;
   	}
-	
+    //Read and check metadata 
   	char* mdata = BF_Block_GetData(first);
-	  memcpy(metadata, mdata, sizeof(HP_info));
-	
+	memcpy(metadata, mdata, sizeof(HP_info));
   	if (strcmp(metadata->filetype, "HP_file") != 0){
 		BF_CloseFile(*fileDesc);
 		return HP_ERROR;
 	}
-  openFiles[*fileDesc] = first;
+    openFiles[*fileDesc] = first;
 	openCount++;
-  return HP_OK;
+    free(metadata);
+    return HP_OK;
 }
 
 HP_ErrorCode HP_CloseFile(int fileDesc) {
@@ -229,21 +229,25 @@ HP_ErrorCode HP_GetEntry(int fileDesc, int blockid, int position,
 	CALL_BF(BF_GetBlock(fileDesc, blockid, target));
 	if(blockGetRecord(target, position, record) != 0){
 		CALL_BF(BF_UnpinBlock(target));
-		BF_BlockDestroy(target);
+		BF_Block_Destroy(&target);
 		return HP_ERROR;	
 	}
 	//GetBlock pins the block now we need to unpin it and delete the local
 	//instance of the block
 	CALL_BF(BF_UnpinBlock(target));
-	BF_BlockDestroy(target);
+	BF_Block_Destroy(&target);
   	return HP_OK;
 }
 
 HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
+  //Get the next record with the given value in the id field. This is done by
+  //Implementing an iterator that stays at the position of the last fetched record 
+  //for this file. DO NOT CALL THIS FUNCTION TWICE IN A ROW FOR THE SAME FILE WITH 
+  //DIFFERENT REQUESTED VALUES SINCE IT MAY LEAD TO RECORDS BEING SKIPPED
     HP_info* metadata = {0};
     BF_Block* first;
     int *target = (int*)value;
-    BF_Block_init(&first);
+    BF_Block_Init(&first);
     BF_GetBlock(fileDesc, 0, first);
     char* data = BF_Block_GetData(first);
     memcpy(metadata, data, sizeof(HP_info));
@@ -252,38 +256,40 @@ HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
     if(metadata->record_count == 0) return HP_EOF;
     while(metadata->iterator_pos < metadata->block_count){
         BF_Block* block;
-        BF_Block_init(block);
-        //read number of records to not read null data (or leftover values in mem)
+        BF_Block_Init(&block);
+        char* data = BF_Block_GetData(block);
+        //read number of records in current block to not read null data (or leftover values in mem)
+        //which may be done if RECORDS_PER_BLOCK is used
         int recordsInBlock = 0;
         CALL_BF(BF_GetBlock(fileDesc,metadata->iterator_pos,block));
-        memcpy(&recordsInBlock, block+sizeof(Record)*RECORDS_PER_BLOCK, sizeof(int));
-        while(info->iterator_slot < recordsInBlock){
+        memcpy(&recordsInBlock, data+sizeof(Record)*RECORDS_PER_BLOCK, sizeof(int));
+        while(metadata->iterator_slot < recordsInBlock){
             Record* cur;
             blockGetRecord(block,metadata->iterator_slot,cur);
             metadata->iterator_slot++;
-            if(cur->id == target){
+            if(cur->id == *target){
               //set result and cleanup
                 record = cur;
                 BF_UnpinBlock(block);
                 memcpy(data,metadata,sizeof(HP_info));
                 BF_UnpinBlock(first);
-                BF_BlockDestroy(block);
-                BF_BlockDestroy(first);
+                BF_Block_Destroy(&block);
+                BF_Block_Destroy(&first);
                 return HP_OK;
             }
         }
         metadata->iterator_pos++;
         metadata->iterator_slot=0;
+        CALL_BF(BF_UnpinBlock(block));
+        BF_Block_Destroy(&block);
     }
     //we reached EOF so we reset the iterator.
     metadata->iterator_pos = 1;
     metadata->iterator_slot = 0;
     //Cleanup and metadata update
-    CALL_BF(BF_UnpinBlock(block));
     memcpy(data,metadata,sizeof(HP_info));
     BF_Block_SetDirty(first);
     CALL_BF(BF_UnpinBlock(first));
-    BF_BlockDestroy(block);
-    BF_BlockDestroy(first);
+    BF_Block_Destroy(&first);
     return HP_EOF;
 }
