@@ -38,7 +38,7 @@ HP_ErrorCode HP_CreateFile(const char *fileName) {
 	it will be closed in the end of this function*/
     CALL_BF(BF_CreateFile(fileName));
     CALL_BF(BF_OpenFile(fileName, &fileDesc));
-    BF_Block_init(&block);
+    BF_Block_Init(&block);
     CALL_BF(BF_AllocateBlock(fileDesc, block));
 
     char* data = BF_Block_GetData(block);
@@ -51,8 +51,8 @@ HP_ErrorCode HP_CreateFile(const char *fileName) {
     memcpy(data, info, sizeof(HP_info));
   
     BF_Block_SetDirty(block);
-    CALL_BF(BF_UnpinBlock(Block));
-    BF_BlockDestroy(block);
+    CALL_BF(BF_UnpinBlock(block));
+    BF_Block_Destroy(&block);
     CALL_BF(BF_CloseFile(fileDesc));
     return HP_OK;
 }
@@ -63,12 +63,12 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
 	if(openCount >= BF_MAX_OPEN_FILES) return HP_ERROR;
 	HP_info* metadata;
 	BF_Block* first = NULL;
-  	BF_Block_init(&first);
+  	BF_Block_Init(&first);
 
 	CALL_BF(BF_OpenFile(fileName, fileDesc));
-	if(BF_GetBlock(fileDesc, 0,first)!=BF_OK){
-    BF_BlockDestroy(&first);
-    BF_CloseFile(fileDesc);
+	if(BF_GetBlock(*fileDesc, 0,first)!=BF_OK){
+    BF_Block_Destroy(&first);
+    BF_CloseFile(*fileDesc);
     return HP_ERROR;
   	}
 	
@@ -76,7 +76,7 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
 	  memcpy(metadata, mdata, sizeof(HP_info));
 	
   	if (strcmp(metadata->filetype, "HP_file") != 0){
-		BF_CloseFile(fileDesc);
+		BF_CloseFile(*fileDesc);
 		return HP_ERROR;
 	}
   openFiles[*fileDesc] = first;
@@ -171,9 +171,53 @@ HP_ErrorCode HP_InsertEntry(int fileDesc, Record record) {
 }
 
 HP_ErrorCode HP_PrintAllEntries(int fileDesc, char *fieldName, void *value) {
-  /* TODO: διατρέξτε τα μπλοκ του αρχείου και εκτυπώστε τις εγγραφές που στο
-     πεδίο fieldName έχουν τιμή value. Αν value == NULL, εκτυπώστε τις όλες. */
-  return HP_ERROR;
+  if(openCount>=BF_MAX_OPEN_FILES) return HP_ERROR;
+  if(openFiles[fileDesc] == NULL) return HP_ERROR;
+
+  int blocks_num = 0;
+  CALL_BF(BF_GetBlockCounter(fileDesc, &blocks_num));
+
+  if(blocks_num<=1) return HP_OK;
+
+  for(int block_id=1; block_id<blocks_num; block_id++){
+    BF_Block *block = NULL;
+    BF_Block_Init(&block);
+
+    CALL_BF(BF_GetBlock(fileDesc,block_id,block));
+    char* mdata = BF_Block_GetData(block);
+    int record_in_block = 0 ;
+    memcpy(&record_in_block, mdata + (sizeof(Record)*RECORDS_PER_BLOCK),sizeof(int)); 
+
+    for(int i=0; i<record_in_block; i++){
+      Record rec;
+      if(blockGetRecord(block,i,&rec) != 0){
+        CALL_BF(BF_UnpinBlock(block));
+        BF_Block_Destroy(&block);
+        return HP_ERROR;
+      }
+
+      int should_print=0;
+
+      if(value == NULL) should_print=1;
+      else if(fieldName != NULL){
+        if(strcmp(fieldName,"id") == 0 ){
+          if(rec.id == *(int*)value) should_print=1; 
+        }else if(strcmp(fieldName,"firstname") == 0){
+          if(strcmp(rec.firstname,(char*)value) == 0) should_print=1;
+        }else if(strcmp(fieldName,"lastname") == 0){
+          if(strcmp(rec.lastname,(char*)value) == 0) should_print=1;
+        }else if(strcmp(fieldName,"postcode") == 0){
+          if(rec.postcode == *(int*)value) should_print=1;
+        }else if(strcmp(fieldName,"city") == 0){
+          if(strcmp(rec.city,(char*)value) == 0) should_print=1;
+        } 
+      }
+      if(should_print) printRecord(rec);
+    }
+    CALL_BF(BF_UnpinBlock(block));
+    BF_Block_Destroy(&block);
+  }
+  return HP_OK;
 }
 
 HP_ErrorCode HP_GetEntry(int fileDesc, int blockid, int position,
@@ -181,7 +225,7 @@ HP_ErrorCode HP_GetEntry(int fileDesc, int blockid, int position,
   	/* TODO: φέρτε το μπλοκ blockid και διαβάστε την εγγραφή της θέσης position
     με την blockGetRecord */
 	BF_Block* target;
-	BF_Block_init(&target);
+	BF_Block_Init(&target);
 	CALL_BF(BF_GetBlock(fileDesc, blockid, target));
 	if(blockGetRecord(target, position, record) != 0){
 		CALL_BF(BF_UnpinBlock(target));
