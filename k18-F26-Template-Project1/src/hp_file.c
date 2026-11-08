@@ -42,6 +42,7 @@ HP_ErrorCode HP_CreateFile(const char *fileName) {
     CALL_BF(BF_AllocateBlock(fileDesc, block));
 
     char* data = BF_Block_GetData(block);
+    //Metadata initialization
     info->filetype = "HP_file";
     info->record_count = 0;
     info->block_count = 1;
@@ -60,6 +61,7 @@ HP_ErrorCode HP_CreateFile(const char *fileName) {
 HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
   /* TODO: ανοίξτε το αρχείο, διαβάστε τα μεταδεδομένα από το πρώτο μπλοκ και
     ελέγξτε ότι πρόκειται όντως για αρχείο σωρού */
+    //Initialize local variables for data and processing
 	if(openCount >= BF_MAX_OPEN_FILES) return HP_ERROR;
 	HP_info* metadata = malloc(sizeof(HP_info));
 	BF_Block* first = NULL;
@@ -240,10 +242,13 @@ HP_ErrorCode HP_GetEntry(int fileDesc, int blockid, int position,
 }
 
 HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
-  //Get the next record with the given value in the id field. This is done by
-  //Implementing an iterator that stays at the position of the last fetched record 
-  //for this file. DO NOT CALL THIS FUNCTION TWICE IN A ROW FOR THE SAME FILE WITH 
-  //DIFFERENT REQUESTED VALUES SINCE IT MAY LEAD TO RECORDS BEING SKIPPED
+    //Get the next record with the given value in the id field. This is done by
+    //Implementing an iterator that stays at the position of the last fetched record 
+    //for this file. DO NOT CALL THIS FUNCTION TWICE IN A ROW FOR THE SAME FILE WITH 
+    //DIFFERENT REQUESTED VALUES SINCE IT MAY LEAD TO RECORDS BEING SKIPPED. If you need
+    //to do that just update metadata manually.
+
+    //Local variables initialization
     HP_info* metadata = {0};
     BF_Block* first;
     int *target = (int*)value;
@@ -254,6 +259,7 @@ HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
     //Sanity checks
     if(strcmp(metadata->filetype, "HP_file") != 0) return HP_ERROR;
     if(metadata->record_count == 0) return HP_EOF;
+    //Loop that moves over blocks
     while(metadata->iterator_pos < metadata->block_count){
         BF_Block* block;
         BF_Block_Init(&block);
@@ -263,12 +269,13 @@ HP_ErrorCode HP_GetNextRecordWithID(int fileDesc, Record *record, void *value) {
         int recordsInBlock = 0;
         CALL_BF(BF_GetBlock(fileDesc,metadata->iterator_pos,block));
         memcpy(&recordsInBlock, data+sizeof(Record)*RECORDS_PER_BLOCK, sizeof(int));
+        //Main loop that searches each block methodiavally
         while(metadata->iterator_slot < recordsInBlock){
             Record* cur;
             blockGetRecord(block,metadata->iterator_slot,cur);
             metadata->iterator_slot++;
             if(cur->id == *target){
-              //set result and cleanup
+                //set result and cleanup
                 record = cur;
                 BF_UnpinBlock(block);
                 memcpy(data,metadata,sizeof(HP_info));
