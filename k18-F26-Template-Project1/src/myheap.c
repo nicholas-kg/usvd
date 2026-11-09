@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
         printf("Couldn't retrieve block. Either it doesn't exist or something unexpected happened\n");
     }
     printf("\n");
-    int target = 203;//Chosen since 2 records share this and is ideal to show the iterator at work.
+    int target = 203;//Chosen since 3 records share this and is ideal to show the iterator at work.
     int record_count=1;
     while(HP_GetNextRecordWithID(fileDesc, &fetched,&target) == HP_OK){
         printf("Record #%d with id=%d is ", record_count,target);

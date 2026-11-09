@@ -87,29 +87,30 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
 }
 
 HP_ErrorCode HP_CloseFile(int fileDesc) {
-  /* TODO: γράψτε στον δίσκο ό,τι εκκρεμεί και κλείστε το αρχείο */
   if (openCount >= BF_MAX_OPEN_FILES){
     return HP_ERROR;
   }
 
+  //retrieve block 0 of opened file through the array
   BF_Block *block = openFiles[fileDesc];
   if(block == NULL){
     return HP_ERROR;
   }
 
+
   BF_Block_SetDirty(block);
   CALL_BF(BF_UnpinBlock(block));
   BF_Block_Destroy(&block);
+  //re-initialize to NULL
   openFiles[fileDesc] = NULL;
   CALL_BF(BF_CloseFile(fileDesc));
 
+  //file closed
   openCount--;
   return HP_OK;
 }
 
-//Idea: Reserve 4 bytes of every block to keep a counter
-//of records in this block. Bytes at the end of the file used
-//--> 4 from BF_BLOCK_SIZE - RECORDS_PER_BLOCK * sizeof(Record)
+
 HP_ErrorCode HP_InsertEntry(int fileDesc, Record record) {
   if (openCount >= BF_MAX_OPEN_FILES) return HP_ERROR;
   if(openFiles[fileDesc] == NULL) return HP_ERROR;
@@ -123,22 +124,27 @@ HP_ErrorCode HP_InsertEntry(int fileDesc, Record record) {
   int blocks_num = 0;
   CALL_BF(BF_GetBlockCounter(fileDesc,&blocks_num));
 
-
   int records_in_block = 0;
   int is_new_block = 0;
 
+  //case  1: block 0 is the only existing block
+  // allocate new block 
   if(blocks_num == 1){
     CALL_BF(BF_AllocateBlock(fileDesc, target_block));
     records_in_block = 0;
     is_new_block = 1;
+  // case 2: retrieve last block 
   } else {
     int last_block = blocks_num -1;
     CALL_BF(BF_GetBlock(fileDesc,last_block,target_block));
 
+    //gets a local counter that is being reserved at the end of the last block of the file
+    //returns total records of the block
     char* data = BF_Block_GetData(target_block);
     int* counter = (int*)(data+sizeof(Record)*RECORDS_PER_BLOCK);
     records_in_block = *counter;
 
+    //if the block is full, unpin the block and create a new one
     if(records_in_block>=RECORDS_PER_BLOCK){
       CALL_BF(BF_UnpinBlock(target_block));
       CALL_BF(BF_AllocateBlock(fileDesc,target_block));
@@ -153,6 +159,7 @@ HP_ErrorCode HP_InsertEntry(int fileDesc, Record record) {
     return HP_ERROR;
   }
 
+  //update the local counter
   records_in_block++;
   char* data = BF_Block_GetData(target_block);
   int* counter = (int*)(data+sizeof(Record)*RECORDS_PER_BLOCK);
@@ -162,6 +169,7 @@ HP_ErrorCode HP_InsertEntry(int fileDesc, Record record) {
   CALL_BF(BF_UnpinBlock(target_block));
   BF_Block_Destroy(&target_block);
 
+  //update metadata
   info->record_count++;
   if(is_new_block){
     info->block_count++;
@@ -179,8 +187,12 @@ HP_ErrorCode HP_PrintAllEntries(int fileDesc, char *fieldName, void *value) {
   int blocks_num = 0;
   CALL_BF(BF_GetBlockCounter(fileDesc, &blocks_num));
 
+  //if at most one block exists(block 0 or none), there are no records to print
   if(blocks_num<=1) return HP_OK;
 
+  //traverse every block
+  //get the record counter at the end of the block
+  //for every record inside the block, find the given value and print the record
   for(int block_id=1; block_id<blocks_num; block_id++){
     BF_Block *block = NULL;
     BF_Block_Init(&block);
@@ -197,7 +209,8 @@ HP_ErrorCode HP_PrintAllEntries(int fileDesc, char *fieldName, void *value) {
         BF_Block_Destroy(&block);
         return HP_ERROR;
       }
-
+      
+      //logic variable sets to 1 if given value is equal to any of the record struct attributes
       int should_print=0;
 
       if(value == NULL) should_print=1;
