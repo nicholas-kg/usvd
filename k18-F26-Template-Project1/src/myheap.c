@@ -83,10 +83,10 @@ int main(int argc, char *argv[]) {
             goto end;
         }
     }
-    printf("\nRecords Inserted successfully\nPrinting records inserted now\n\n");
+    printf("\nRecords Inserted successfully\n\nPrinting records inserted now with HP_PrintAllEntries\n\n");
     HP_PrintAllEntries(fileDesc, "id", NULL);
     Record fetched;
-    printf("\n");
+    printf("\nRetrieving record in the 3rd position of the second block of the heap file\n");
     if (HP_GetEntry(fileDesc, 1, 2, &fetched) == HP_OK){
         printf("Retrieved record: ");
         printRecord(fetched);

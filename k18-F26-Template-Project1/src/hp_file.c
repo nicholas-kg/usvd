@@ -44,7 +44,9 @@ HP_ErrorCode HP_CreateFile(const char *fileName) {
 
     char* data = BF_Block_GetData(block);
     //Metadata initialization
-    info->filetype = "HP_file";
+    strncpy(info->fileName, fileName, sizeof(info->fileName) - 1);
+    info->fileName[sizeof(info->fileName) - 1] = '\0';
+    strcpy(info->filetype, "HP_file");
     info->record_count = 0;
     info->block_count = 1;
     info->Last_block = block;
@@ -66,18 +68,30 @@ HP_ErrorCode HP_OpenFile(const char *fileName, int *fileDesc) {
 	HP_info* metadata = malloc(sizeof(HP_info));
 	BF_Block* first = NULL;
   	BF_Block_Init(&first);
-
+    //Check if file is already open
+    for (int i = 0; i < BF_MAX_OPEN_FILES; i++){
+        if (openFiles[i]==NULL) continue;
+        char* data = BF_Block_GetData(openFiles[i]);
+        memcpy(metadata, data, sizeof(HP_info));
+        if (strcmp(metadata->fileName, fileName) == 0){
+            free(metadata);
+            return HP_ERROR;//file is open
+        } 
+    }
 	CALL_BF(BF_OpenFile(fileName, fileDesc));
 	if(BF_GetBlock(*fileDesc, 0,first)!=BF_OK){
-    BF_Block_Destroy(&first);
-    BF_CloseFile(*fileDesc);
-    return HP_ERROR;
-  	}
+        BF_Block_Destroy(&first);
+        BF_CloseFile(*fileDesc);
+        free(metadata);
+        return HP_ERROR;
+    }
     //Read and check metadata 
   	char* mdata = BF_Block_GetData(first);
 	memcpy(metadata, mdata, sizeof(HP_info));
   	if (strcmp(metadata->filetype, "HP_file") != 0){
+        BF_Block_Destroy(&first);
 		BF_CloseFile(*fileDesc);
+        free(metadata);
 		return HP_ERROR;
 	}
     openFiles[*fileDesc] = first;

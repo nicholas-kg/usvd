@@ -19,7 +19,8 @@ typedef enum HP_ErrorCode {
  * διαχείριση του iterator της HP_GetNextRecordWithID.
  */
 typedef struct HP_info {
-    char* filetype;
+    char fileName[256];
+    char filetype[20];
     int record_count;
     int block_count;
     BF_Block* Last_block;
