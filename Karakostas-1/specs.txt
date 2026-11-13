@@ -1,0 +1,16 @@
+Use this as reference for the reports
+hostname: linux09 (this may change depending on ssh host). 
+CPU(s):                             4
+Core(s) per socket:                 4
+NUMA node(s):                       1
+Model name:                         Intel(R) Core(TM) i5-6500 CPU @ 3.20GHz
+NAME="Ubuntu"
+VERSION="20.04.6 LTS (Focal Fossa)"
+PRETTY_NAME="Ubuntu 20.04.6 LTS"
+kernel version: 5.4.0-216-generic
+
+to check these again (to make sure when writing report) run:
+hostname
+lscpu (prints more info than needed/only info shown is relevant to us)
+cat /etc/os-release (for linux version/also shows more info than relevant)
+uname -r for kernel version (dunno if needed)
