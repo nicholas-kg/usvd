@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -O2 -pthread
 TARGET = matrix_pow
-SRC = matrix_pow
+SRC = matrix_pow.c
 
 .PHONY all clean
 
