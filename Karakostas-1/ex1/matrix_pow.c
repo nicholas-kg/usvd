@@ -10,16 +10,14 @@ typedef struct{
     double **B;
     double **C;
     int N;
-    int rank
+    int rank;
     int thread_count;
 }Args;
 
 //All matrixes used in this program have size N x N
-void matrix_mult(double** first, double** second, double** result, int N);
-void swap_matrix(double** first, double** second, int N);
-void matrix_pow(double** A, double** out, int N, int pow);
-void print_matrix(double** A, int N);
-void* parallel_mult(Args* args);
+void matrix_mult(int N, double** first, double** second, double** result);
+void matrix_pow(double** A, double** out, int pow, int N);
+void* parallel_mult(void* args);
 void parallel_pow(double** A, double** out, int N, int pow,pthread_t* threads, int thread_count);
 
 
@@ -31,9 +29,9 @@ int main(int argc, char** argv){
         fprintf(stderr, "Call this program as: %s <size of matrix> <power> <num of threads>\n", argv[0]);
         return 1;
     }
-    N = atoi(argv[1]);
-    p = atoi(argv[2]);
-    thread_count = atoi(argv[3]);
+    int N = atoi(argv[1]);
+    int p = atoi(argv[2]);
+    int thread_count = atoi(argv[3]);
 
     clock_gettime(CLOCK_MONOTONIC, &start);
     double** A = malloc(N*sizeof(double*));
@@ -65,10 +63,9 @@ int main(int argc, char** argv){
 
     //Run non parallel algorithm 
     clock_gettime(CLOCK_MONOTONIC, &start);
-    matrix_pow(A,out,N,pow);
+    matrix_pow(A,out,p,N);
     clock_gettime(CLOCK_MONOTONIC, &end);
     printf("Result of non parallel implementation\n\n");
-    print_matrix(out);
     printf("\n");
     time_elapsed = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) / 1e9;
     printf("Time elapsed: %lf seconds\n", time_elapsed);
@@ -76,13 +73,12 @@ int main(int argc, char** argv){
     //Now for the parallel Implementation
     //Create the threads and initialize the barrier
     //And then call the parallel function
-    pthread_t* threads[thread_count];
+    pthread_t threads[thread_count];
     //Args will be initialized in the parallel function (see code bellow)
     clock_gettime(CLOCK_MONOTONIC, &start);
-    parallel_pow(A,out,N,pow,threads,thread_count);
+    parallel_pow(A,out,N,p,threads,thread_count);
     clock_gettime(CLOCK_MONOTONIC, &end);
     printf("Result of parallel implementation\n\n");
-    print_matrix(out);
     printf("\n");
     time_elapsed = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) / 1e9;
     printf("Time elapsed for the prallel implementation: %lf seconds\n", time_elapsed);
@@ -97,16 +93,12 @@ int main(int argc, char** argv){
     return 0;
 }
 
-void matrix_mult(double** first, double** second, double** result, int N){
-    if (p <= 0){
-        fprintf(stderr, "Power has to be a positive integer\n");
-        exit(1);
-    }
+void matrix_mult(int N, double** first, double** second, double** result){
     if (N <= 1){
         fprintf(stderr, "Matrix has to have size > 1\n");
         exit(1);
     }
-    tmp[N][N];
+    double tmp[N][N];
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < N; j++) {
             tmp[i][j] = 0;
@@ -118,19 +110,8 @@ void matrix_mult(double** first, double** second, double** result, int N){
     }    
 }
 
-void swap_matrix(double** first, double** second, int N){
-    for (int i = 0; i < N; i++){
-        for (int j = 0; j < N; j++){
-            double temp = first[i][j];
-            first[i][j] = second[i][j];
-            second[i][j] = temp;
-        }
-    }    
-}
-
-
-void matrix_pow(double** A, double** out, int N, int pow){
-    if (p <= 0){
+void matrix_pow(double** A, double** out, int pow, int N){
+    if (pow <= 0){
         fprintf(stderr, "Power has to be a positive integer\n");
         exit(1);
     }
@@ -138,11 +119,40 @@ void matrix_pow(double** A, double** out, int N, int pow){
         fprintf(stderr, "Matrix has to have size > 1\n");
         exit(1);
     }
-
-    double res[N][N];
-    double tmp[N][N];
-    double base[N][N];
-
+    //Allocation and sanity checks
+    double** res = malloc(N*sizeof(double*));
+    double** tmp = malloc(N*sizeof(double*));
+    double** base = malloc(N*sizeof(double*));
+    if (!res || !tmp || !base){
+        if(res) free(res);
+        if(base) free(base);
+        if(tmp) free(tmp);
+    }
+    for (int i = 0; i < N; i++){
+        res[i] = malloc(N * sizeof(double));
+        tmp[i] = malloc(N * sizeof(double));
+        base[i] = malloc(N * sizeof(double));
+        if (!res[i] || !tmp[i] || !base[i]){
+            if (base) {
+            for (int i = 0; i < N; i++) {
+                free(base[i]); // free(NULL) is safely ignored in C
+            }
+            free(base);
+            }
+            if (tmp) {
+                for (int i = 0; i < N; i++) {
+                free(tmp[i]);
+                }
+                free(tmp);
+            }
+            if (res) {
+            for (int i = 0; i < N; i++) {
+                free(res[i]);
+            }
+            free(res);
+            }
+        }
+    }
     //Initialization of res and base
     for (int i=0; i<N; i++){
         for (int j=0; j<N; j++){
@@ -150,36 +160,30 @@ void matrix_pow(double** A, double** out, int N, int pow){
             base[i][j] = A[i][j];
         }
     }
-    while (p > 0){
+    while (pow > 0){
         //p is odd -> tmp=res*base
-        if (p % 2){
-            matrix_mult(res, base, tmp, N);
+        if (pow % 2){
+            matrix_mult(N, res, base, tmp);
             //Swap res and tmp 
-            swap_matrix(res,tmp);
+            double** temp = res;
+            res = tmp;
+            tmp = temp;
         }
         //res = base*base
-        if (p > 1){
-            matrix_mult(base, base, res, N);
+        if (pow > 1){
+            matrix_mult(N, base, base, tmp);
             //swap base and tmp
-            swap_matrix(base,tmp);
+            double** temp = base;
+            base = tmp;
+            tmp = temp;
         }
-        p = p / 2;   
+        pow = pow / 2;   
     }
     //Result copied to out 
     for (int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
             out[i][j] = res[i][j];
         }
-    }
-}
-
-void print_matrix(double** A, int N){
-    for (int i = 0; i < N; i++){
-        printf("| ");
-        for (int j = 0; j < N; j++){
-            printf("%lf ", A[i][j]);
-        }
-        printf("|\n");
     }
 }
 
@@ -199,8 +203,16 @@ void* parallel_mult(void* args){
     return NULL;
 }
 
-void parallel_pow(double** A, double** out, int N, int pow,pthread_t* threads, int thread_count){
+void parallel_pow(double** A, double** out, int N, int pow, pthread_t* threads, int thread_count){
     //Initialize args for thread workers
+    if (pow <= 0){
+        fprintf(stderr, "Power has to be a positive integer\n");
+        exit(1);
+    }
+    if (N <= 1){
+        fprintf(stderr, "Matrix has to have size > 1\n");
+        exit(1);
+    }
     Args* args = malloc(sizeof(Args));
     if (!args){
         fprintf(stderr, "Error during matrix allocation\n");
@@ -226,14 +238,14 @@ void parallel_pow(double** A, double** out, int N, int pow,pthread_t* threads, i
             res[i][j] = (i==j) ? 1 : 0;
         }
     }
-    while (p > 0){
-        if (p % 2){
+    while (pow > 0){
+        if (pow % 2){
             args->A = res;
             args->B = base;
             args->C = tmp;
             for (int i = 0; i < thread_count; i++){
-                args->rank = i
-                pthread_create(threads[i], NULL, parallel_mult, args);
+                args->rank = i;
+                pthread_create(&threads[i], NULL, parallel_mult, args);
             }
             for (int i = 0; i < thread_count; i++){
                 pthread_join(threads[i], NULL);
@@ -242,13 +254,13 @@ void parallel_pow(double** A, double** out, int N, int pow,pthread_t* threads, i
             res = tmp;
             tmp = temp;
         }
-        if (p > 1){
+        if (pow > 1){
             args->A = base;
             args->B = base;
-            args->C = res;
+            args->C = tmp;
             for (int i = 0; i < thread_count; i++){
-                args->rank = i
-                pthread_create(threads[i], NULL, parallel_mult, args);
+                args->rank = i;
+                pthread_create(&threads[i], NULL, parallel_mult, args);
             }
             for (int i = 0; i < thread_count; i++){
                 pthread_join(threads[i], NULL);
@@ -257,14 +269,14 @@ void parallel_pow(double** A, double** out, int N, int pow,pthread_t* threads, i
             base = tmp;
             tmp = temp;
         }
-        p = p / 2;
+        pow = pow / 2;
     }
     for (int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
             out[i][j] = res[i][j];
         }
     }
-    for (int i = 0; i < r; i++){
+    for (int i = 0; i < N; i++){
         free(tmp[i]);
         free(res[i]);
     }
