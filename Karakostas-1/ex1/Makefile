@@ -3,7 +3,7 @@ CFLAGS = -Wall -O2 -pthread
 TARGET = matrix_pow
 SRC = matrix_pow.c
 
-.PHONY all clean
+.PHONY: all clean
 
 all: $(TARGET)
 
