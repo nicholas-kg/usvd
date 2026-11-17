@@ -49,6 +49,8 @@ int main(int argc, char** argv){
     }
     clock_gettime(CLOCK_MONOTONIC, &start);
     sequential_stats(arrays, size);
+    array_stats stats_seq[NUM_THREADS];
+    memcpy(stats_seq, all_stats, NUM_THREADS*sizeof(array_stats));
     clock_gettime(CLOCK_MONOTONIC, &end);
     time_elapsed = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) / 1e9;
     print_stats();
@@ -70,6 +72,21 @@ int main(int argc, char** argv){
     time_elapsed = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) / 1e9;
     print_stats();
     printf("Parallel implementation lasted: %lf seconds\n", time_elapsed);
+    for(int i = 0; i < NUM_THREADS; i++){
+        if (stats_seq[i].nr_of_elements_equal_to_one != all_stats[i].nr_of_elements_equal_to_one){
+            fprintf(stderr, "results do not match\n");
+            return 1;
+        }
+        if (stats_seq[i].nr_of_elements_equal_to_zero != all_stats[i].nr_of_elements_equal_to_zero){
+            fprintf(stderr, "results do not match\n");
+            return 1;
+        }
+        if (stats_seq[i].nr_of_elements_greater_than_one != all_stats[i].nr_of_elements_greater_than_one){
+            fprintf(stderr, "results do not match\n");
+            return 1;
+        }
+    }
+    printf("\nResults match\n");
     //cleanup
     for (int i = 0; i < 4; i++){
         free(arrays[i]);
