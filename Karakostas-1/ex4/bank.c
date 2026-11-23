@@ -140,7 +140,7 @@ void* bank_worker_0(void* args){
     int count = argsin->accounts_num;
     //Randomly choose transaction type in each loop
     //Randomly choose account to perform transaction on 
-    for (int i = 0; i < transactions; i++){
+    for (int i = 0; i < argsin->transactions; i++){
         int type;
         if (inq_transactions == 0) type = 1;
         else if (transfers == 0) type = 2;
@@ -211,9 +211,9 @@ void* bank_worker_1(void* args){
         }else{
             pthread_mutex_lock(&accounts[target].fine_mutex);
             printf("Account %d has balance: %lld\n", target, accounts[target]);
-            pthread_mutex_lock(&accounts[target].fine_mutex);
+            pthread_mutex_unlock(&accounts[target].fine_mutex);
             inq_transactions--;
         }
-        return NULL;
     }
+    return NULL;
 }
