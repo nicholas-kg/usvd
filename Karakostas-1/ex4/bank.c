@@ -9,11 +9,14 @@
 typedef struct{
     long long int balance;
     pthread_mutex_t fine_mutex;
+    pthread_rwlock_t fine_rwlock;
 }Account;
 //Enum for simplicity
 typedef enum {FINE_GRAINED, COARSE_GRAINED} lock_type;
 //Lock for the coarse-grained version
-pthread_mutex_t coarse_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t coarse_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_rwlock_t coarse_rwlock = PTHREAD_RWLOCK_INITIALIZER;
+
 typedef struct{
     //Leave one of the two be NULL (Depends on lock type)
     long long int* accounts_1;
