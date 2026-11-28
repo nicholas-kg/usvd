@@ -1,3 +1,0 @@
-mode,mode_name,threads,iterations,time_sec
-1,Pthread_Barrier,2,10000,0.000431
-2,Cond_Var_Barrier,2,10000,0.581705
