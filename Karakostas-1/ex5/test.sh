@@ -12,9 +12,9 @@ done
 
 echo "mode,mode_name,threads,iterations,time_sec" > "$OUT"
 
-THREADS_LIST=(2 4 8 16)
+THREADS_LIST=(4 8)
 # Note: barrier_cond takes exponent n (10^n), while the others take exact iterations
-EXPONENTS=(4 5 6)
+EXPONENTS=(4 5)
 
 echo "Starting barrier benchmarks..."
 

@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -7,8 +8,8 @@
 typedef struct Node {
     struct Node *parent;   // Next node up the tree 
     int expected;          // How many arrivals this node waits for 
-    int count;             // Current arrivals left
-    volatile bool flag;    // Sense flag to release threads waiting at this node
+    atomic_int count;             // Current arrivals left
+    atomic_bool flag;    // Sense flag to release threads waiting at this node
 } Node;
 
 static Node *leaves;       
@@ -83,19 +84,20 @@ void tree_init(int num_threads) {
     }
 
     for (int i = 0; i < total_nodes; i++) {
-        all_nodes[i].count = all_nodes[i].expected;
+        atomic_init(&all_nodes[i].count, all_nodes[i].expected);
+        atomic_init(&all_nodes[i].flag, false);
     }
 }
 
 void node_wait(Node *node, bool sense) {
-    if (__atomic_sub_fetch(&node->count, 1, __ATOMIC_ACQ_REL) == 0) {
+    if (atomic_fetch_sub_explicit(&node->count, 1, memory_order_acq_rel) == 1) {
         if (node->parent != NULL) {
             node_wait(node->parent, sense);
         }
-        node->count = node->expected;
-        node->flag = sense;
+        atomic_store_explicit(&node->count, node->expected, memory_order_relaxed);
+        atomic_store_explicit(&node->flag, sense, memory_order_release);
     } else {
-        while (node->flag != sense) {
+        while (atomic_load_explicit(&node->flag, memory_order_acquire) != sense) {
             // busy-wait
         }
     }

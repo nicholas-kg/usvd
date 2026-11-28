@@ -2,13 +2,14 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #include <time.h>
 
 typedef struct {
     pthread_mutex_t lock;
     int barrier_count;
     int thread_count;
-    bool flag;
+    atomic_bool flag;
 } Barrier;
 
 static Barrier barrier;
@@ -68,7 +69,7 @@ void barrier_init(Barrier *bar, pthread_mutexattr_t *attr, int count) {
     pthread_mutex_init(&(bar->lock), attr);
     bar->thread_count = 0;
     bar->barrier_count = count;
-    bar->flag = false;
+    atomic_init(&bar->flag, false);
 }
 
 void barrier_wait(Barrier *bar, bool *local_flag) {
@@ -82,7 +83,7 @@ void barrier_wait(Barrier *bar, bool *local_flag) {
         pthread_mutex_unlock(&(bar->lock));
     } else {
         pthread_mutex_unlock(&(bar->lock));
-        while (bar->flag != *local_flag) {
+        while (atomic_load(&bar->flag) != *local_flag) {
             // busy-wait for flag 
         }
     }
